@@ -18,7 +18,7 @@ PAGE = r'''<!doctype html><n<html lang="en"><head><meta charset="utf-8"><meta na
 <section class="card"><h2>Auto Join Clan</h2><label class="muted small">Guild / clan ID (used if an account has no clan_id)</label><input id="guild" placeholder="Enter guild ID"><button id="join">Auto Join Clan</button><p class="muted small">Uses the join API endpoint you provided. Only run this for accounts you own or are authorized to use.</p></section>
 <section class="card"><h2>Console</h2><pre id="log">{{last}}</pre><div class="row"><input id="cmd" placeholder="Dashboard note / command" style="flex:1"><button id="send">Send</button></div><p class="muted small">Commands are logged only; no bot process is connected yet.</p></section></div></div>
 <script>
-const log=document.getElementById('log');function say(t){log.textContent=new Date().toLocaleTimeString()+'  '+t+'\n'+log.textContent}
+const log=document.getElementById('log');function say(t){log.textContent=new Date().toLocaleTimeString()+'  '+t+'\\n'+log.textContent}
 document.getElementById('upload').onsubmit=async e=>{e.preventDefault();let r=await fetch('/api/accounts',{method:'POST',body:new FormData(e.target)});let d=await r.json();say(d.message||d.error);if(d.ok)document.getElementById('accounts').textContent=d.count+' accounts loaded'};
 document.getElementById('join').onclick=async()=>{let guild_id=document.getElementById('guild').value.trim();if(!guild_id){say('Enter a guild ID first');return}let b=document.getElementById('join');b.disabled=true;b.textContent='Joining...';try{let r=await fetch('/api/auto_join_clans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guild_id})});let d=await r.json();say(d.message||d.error||'Finished')}catch(e){say('Request failed: '+e)}finally{b.disabled=false;b.textContent='Auto Join Clan'}};
 document.getElementById('send').onclick=async()=>{let command=document.getElementById('cmd').value.trim();if(!command)return;let r=await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command})});let d=await r.json();say(d.message||d.error);document.getElementById('cmd').value=''};
@@ -82,11 +82,14 @@ def auto_join_clans():
         gid=a['clan_id'] or default_guild
         try:
             resp=requests.get('https://danger-guild-management-web.vercel.app/join',params={'guild_id':gid,'uid':a['uid'],'password':a['password']},timeout=20)
-            results.append(f"{a['uid']}: HTTP {resp.status_code}")
+            # Include the API's rejection reason so HTTP 400 can be diagnosed.
+            # Never echo the account password into the dashboard log.
+            detail=(resp.text or '').replace(a['password'],'[redacted]').replace('\\r',' ').replace('\\n',' ').strip()[:350]
+            results.append(f"{a['uid']}: HTTP {resp.status_code}" + (f" — {detail}" if detail else ""))
         except requests.RequestException as e: results.append(f"{a['uid']}: request failed ({e})")
         time.sleep(0.2)
     state['last_action']=f'Auto join attempted for {len(results)} accounts'
-    return jsonify(ok=True,message='\n'.join(results))
+    return jsonify(ok=True,message='\\n'.join(results))
 
 @app.route('/api/command', methods=['POST'])
 def command():
